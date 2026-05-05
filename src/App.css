@@ -93,7 +93,7 @@ body {
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   margin-bottom: 2rem;
   padding: 1.5rem 0 1.25rem;
   border-bottom: 1px solid var(--border);
@@ -728,6 +728,125 @@ body {
 .status-unknown {
   background: var(--gray-100);
   color: var(--gray-500);
+}
+
+/* ── TOPBAR BADGE ── */
+.topbar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gray-500);
+  padding: 6px 14px;
+  background: var(--gray-100);
+  border-radius: 20px;
+}
+
+.dot-live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+/* ── PANEL DESC + FOOTER ── */
+.panel-desc {
+  padding: 6px 16px 0;
+  font-size: 12px;
+  color: var(--gray-500);
+  font-weight: 500;
+}
+
+.panel-footer {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--gray-100);
+  margin-top: 4px;
+}
+
+/* ── PROGRESS BAR ── */
+.count-display {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.count-num {
+  font-size: 1.25rem;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 600;
+  color: var(--indigo);
+}
+
+.count-sep {
+  font-size: 14px;
+  color: var(--gray-300);
+  margin: 0 2px;
+}
+
+.count-total {
+  font-size: 13px;
+  font-family: "IBM Plex Mono", monospace;
+  color: var(--gray-500);
+}
+
+.progress-outer {
+  height: 6px;
+  background: var(--gray-100);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.progress-inner {
+  height: 100%;
+  background: var(--indigo);
+  border-radius: 3px;
+  transition: width 0.35s ease;
+}
+
+.progress-inner-b {
+  background: var(--teal);
+}
+
+/* ── SECONDARY BUTTON ── */
+.btn-primary-b {
+  background: var(--teal);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.btn-primary-b:hover:not(:disabled) {
+  background: #0e7490;
+  transform: translateY(-1px);
+}
+
+.btn-primary-b:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn-primary-b:disabled {
+  background: var(--gray-200);
+  color: var(--gray-500);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── STOP + RESET ROWS ── */
+.stop-row,
+.reset-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+/* ── DARK SPINNER (for topbar) ── */
+.spinner-dark {
+  border-color: rgba(0, 0, 0, 0.15);
+  border-top-color: var(--gray-500);
 }
 
 /* ── RESPONSIVE ── */
