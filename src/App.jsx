@@ -250,7 +250,7 @@ export default function App() {
         <div className="config-body">
           <div className="count-row">
             <div className="inp-group">
-              <label>Messages to process</label>
+              <label>Messages to process (max 10,000)</label>
               <input
                 type="number"
                 min="5"
