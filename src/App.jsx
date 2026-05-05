@@ -33,16 +33,12 @@ export default function App() {
   const [users, setUsers] = useState([]);
 
   async function fetchUsers() {
-    const [s1Res, s3Res] = await Promise.all([
-      axios.get(`${S1}/users`),
-      axios.get(`${S3}/users`),
-    ]);
-    const s1Map = {};
-    s1Res.data.forEach((u) => (s1Map[u.id] = u.status));
+    const s3Res = await axios.get(`${S3}/users`);
+    const reverseMap = { ACTIVE: "1", INACTIVE: "2", PENDING: "3" };
     const merged = s3Res.data.map((u) => ({
       id: u.id,
       name: u.name,
-      raw: s1Map[u.id] || "?",
+      raw: reverseMap[u.status] || "?",
       mapped: u.status,
     }));
     setUsers(merged);
@@ -57,7 +53,7 @@ export default function App() {
       const failed = Number(res.data.FAILED || 0);
       const elapsed = Date.now() - startTime;
       setProgress({ published, pending, failed, total, elapsed });
-      if (published + failed >= total) break;
+      if (pending === 0 && published + failed > 0) break;
       await sleep(800);
     }
     return Date.now() - startTime;
