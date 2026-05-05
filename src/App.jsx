@@ -254,9 +254,12 @@ export default function App() {
               <input
                 type="number"
                 min="5"
-                max="200"
+                max="10000"
                 value={count}
-                onChange={(e) => setCount(parseInt(e.target.value) || 30)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 30;
+                  setCount(Math.min(val, 10000));
+                }}
               />
             </div>
           </div>
