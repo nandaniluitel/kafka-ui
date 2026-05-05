@@ -29,8 +29,10 @@ export default function App() {
   const [timeA, setTimeA] = useState(null);
   const [timeB, setTimeB] = useState(null);
   const [error, setError] = useState(null);
-  const abortRef = useRef(false);
   const [users, setUsers] = useState([]);
+  const [readyMsg, setReadyMsg] = useState("");
+  const startListenerRef = useRef(null);
+  const abortRef = useRef(false);
 
   async function fetchUsers() {
     const s3Res = await axios.get(`${S3}/users`);
@@ -44,27 +46,74 @@ export default function App() {
     setUsers(merged);
   }
 
-  async function pollUntilDone(setProgress, startTime, total) {
+  async function waitUntilAllInKafka(total) {
     while (true) {
       if (abortRef.current) throw new Error("Aborted");
       const res = await axios.get(`${S1}/outbox/stats`);
-      const published = Number(res.data.PUBLISHED || 0);
       const pending = Number(res.data.PENDING || 0);
+      const published = Number(res.data.PUBLISHED || 0);
       const failed = Number(res.data.FAILED || 0);
+      const total_outbox = pending + published + failed;
+      if (pending === 0 && total_outbox >= total) break;
+      await sleep(800);
+    }
+  }
+
+  async function pollUntilService3Done(setProgress, startTime, total) {
+    while (true) {
+      if (abortRef.current) throw new Error("Aborted");
+      const res = await axios.get(`${S3}/users`);
+      const count3 = res.data.length;
       const elapsed = Date.now() - startTime;
-      setProgress({ published, pending, failed, total, elapsed });
-      if (pending === 0 && published + failed > 0) break;
+      setProgress({ published: count3, total, elapsed });
+      if (count3 >= total) break;
       await sleep(800);
     }
     return Date.now() - startTime;
   }
 
-  async function runSide(concurrency, setProgress) {
+  async function waitForUserToStart(side) {
+    setReadyMsg(
+      `All ${count} messages are sitting in Kafka waiting. Click "Start Listener" to begin timing.`
+    );
+    setPhase(`ready${side}`);
+    return new Promise((resolve) => {
+      startListenerRef.current = resolve;
+    });
+  }
+
+  async function runSide(side, concurrency, setProgress) {
+    // 1. set concurrency
     await axios.post(`${S2}/concurrency?value=${concurrency}`);
-    await sleep(1200);
-    const start = Date.now();
+    await sleep(1000);
+
+    // 2. stop listener
+    await axios.post(`${S2}/listener/stop`);
+    await sleep(500);
+
+    // 3. clear everything
+    await axios.delete(`${S1}/reset`);
+    await axios.delete(`${S3}/users`);
+    await sleep(500);
+
+    // 4. seed records
     await axios.post(`${S1}/seed?count=${count}`);
-    return await pollUntilDone(setProgress, start, count);
+
+    // 5. wait until all records are in Kafka
+    setPhase(`seeding${side}`);
+    await waitUntilAllInKafka(count);
+
+    // 6. wait for user to click start
+    await waitForUserToStart(side);
+
+    // 7. start timer + start listener at same time
+    const start = Date.now();
+    await axios.post(`${S2}/listener/start`);
+
+    // 8. poll Service 3 until all records received
+    setPhase(`running${side}`);
+    const elapsed = await pollUntilService3Done(setProgress, start, count);
+    return elapsed;
   }
 
   async function runBenchmark() {
@@ -73,15 +122,18 @@ export default function App() {
     setProgressB(null);
     setTimeA(null);
     setTimeB(null);
+    setUsers([]);
     abortRef.current = false;
+
     try {
-      setPhase("runningA");
-      const msA = await runSide(concA, setProgressA);
+      const msA = await runSide("A", concA, setProgressA);
       setTimeA(msA);
-      await sleep(2000);
-      setPhase("runningB");
-      const msB = await runSide(concB, setProgressB);
+
+      await sleep(1500);
+
+      const msB = await runSide("B", concB, setProgressB);
       setTimeB(msB);
+
       setPhase("done");
       await fetchUsers();
     } catch (e) {
@@ -90,8 +142,18 @@ export default function App() {
     }
   }
 
+  function handleStartListener() {
+    if (startListenerRef.current) {
+      startListenerRef.current();
+      startListenerRef.current = null;
+    }
+  }
+
   const partitions = 3;
+  const isSeeding = phase === "seedingA" || phase === "seedingB";
+  const isReady = phase === "readyA" || phase === "readyB";
   const isRunning = phase === "runningA" || phase === "runningB";
+  const isBusy = isSeeding || isReady || isRunning;
   const winner = timeA && timeB ? (timeA <= timeB ? "A" : "B") : null;
 
   function PartitionBars({ progress, concurrency }) {
@@ -129,6 +191,15 @@ export default function App() {
   }
 
   function StatusBadge({ side }) {
+    if (phase === `seeding${side}`)
+      return (
+        <span className="status status-seeding">
+          <span className="status-dot" />
+          Seeding
+        </span>
+      );
+    if (phase === `ready${side}`)
+      return <span className="status status-ready">Ready</span>;
     if (phase === `running${side}`)
       return (
         <span className={`status status-running${side === "B" ? "-b" : ""}`}>
@@ -224,9 +295,14 @@ export default function App() {
             <button
               className="btn btn-primary"
               onClick={runBenchmark}
-              disabled={isRunning}
+              disabled={isBusy}
             >
-              {isRunning ? (
+              {isSeeding ? (
+                <>
+                  <span className="spinner" />
+                  Seeding into Kafka…
+                </>
+              ) : isBusy && !isReady ? (
                 <>
                   <span className="spinner" />
                   {phase === "runningA" ? "Running Side A…" : "Running Side B…"}
@@ -235,6 +311,13 @@ export default function App() {
                 "Run Benchmark"
               )}
             </button>
+
+            {isReady && (
+              <button className="btn btn-start" onClick={handleStartListener}>
+                ▶ Start Listener
+              </button>
+            )}
+
             {phase === "done" && (
               <button
                 className="btn btn-ghost"
@@ -244,6 +327,7 @@ export default function App() {
                   setProgressB(null);
                   setTimeA(null);
                   setTimeB(null);
+                  setUsers([]);
                 }}
               >
                 Reset
@@ -251,13 +335,19 @@ export default function App() {
             )}
           </div>
 
+          {isReady && <div className="ready-bar">✅ {readyMsg}</div>}
+
           {error && <div className="error-bar">⚠ {error}</div>}
         </div>
       </div>
 
       <div className="panels">
         <div
-          className={`panel ${phase === "runningA" ? "panel-active-a" : ""}`}
+          className={`panel ${
+            phase === "runningA" || phase === "readyA" || phase === "seedingA"
+              ? "panel-active-a"
+              : ""
+          }`}
         >
           <div className="panel-top">
             <span className="panel-name">Side A — concurrency={concA}</span>
@@ -270,7 +360,11 @@ export default function App() {
         </div>
 
         <div
-          className={`panel ${phase === "runningB" ? "panel-active-b" : ""}`}
+          className={`panel ${
+            phase === "runningB" || phase === "readyB" || phase === "seedingB"
+              ? "panel-active-b"
+              : ""
+          }`}
         >
           <div className="panel-top">
             <span className="panel-name">Side B — concurrency={concB}</span>
@@ -317,6 +411,7 @@ export default function App() {
           </div>
         </div>
       )}
+
       {users.length > 0 && (
         <div className="users-card">
           <div className="users-header">
